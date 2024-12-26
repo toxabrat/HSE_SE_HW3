@@ -1,91 +1,62 @@
 #pragma once
+#include "Procesing.h"
 
-#include <array>
-#include <iostream>
-#include <ostream>
-#include <cassert>
-#include <random>
-#include <tuple>
-#include <ranges>
-#include <cstring>
-#include <algorithm>
-#include "Fixed.h"
-#include "RandomGenerator.h"
+template<typename P, typename V, typename FLOW_TYPE>
+class Procesing<P, V, FLOW_TYPE, 0, 0> : public ProcesingParent{
+public:
+    static constexpr size_t T = 1'000'000;
+    static constexpr std::array<std::pair<int,int>,4> deltas {{ {-1,0},{1,0},{0,-1},{0,1} }};
 
-template<typename P, typename V, typename FLOW_TYPE, size_t N_SIZE, size_t M_SIZE>
-class Procesing {
-    public:
-        static constexpr size_t N = N_SIZE, M = M_SIZE;
-        static constexpr size_t T = 1'000'000;
-        static constexpr std::array<std::pair<int, int>, 4> deltas{{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}};  
-        static constexpr P inf = P::get_inf();
-        static constexpr P eps = P::get_eps;
-        P rho[256];
-        P p[N][M]{};
-        P old_p[N][M];
-        int dirs[N][M]{};
-
-        char field[N][M + 1] = {
-            "####################################################################################",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "#                                       .........                                  #",
-            "#..............#            #           .........                                  #",
-            "#..............#            #           .........                                  #",
-            "#..............#            #           .........                                  #",
-            "#..............#            #                                                      #",
-            "#..............#            #                                                      #",
-            "#..............#            #                                                      #",
-            "#..............#            #                                                      #",
-            "#..............#............#                                                      #",
-            "#..............#............#                                                      #",
-            "#..............#............#                                                      #",
-            "#..............#............#                                                      #",
-            "#..............#............#                                                      #",
-            "#..............#............#                                                      #",
-            "#..............#............#                                                      #",
-            "#..............#............#                                                      #",
-            "#..............#............################                     #                 #",
-            "#...........................#....................................#                 #",
-            "#...........................#....................................#                 #",
-            "#...........................#....................................#                 #",
-            "##################################################################                 #",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "#                                                                                  #",
-            "####################################################################################",
-        };
-
-        template<typename VF>
-        struct VectorField {
-            std::array<VF, deltas.size()> v[N][M];
-            VF &add(int x, int y, int dx, int dy, VF dv) {
-                return get(x, y, dx, dy) += dv;
+    template<typename VF>
+    struct VectorField {
+        std::array<VF, deltas.size()> **v;
+        VectorField(size_t n, size_t m) {
+            v = new std::array<VF, 4>*[n];
+            for(int i=0;i<n;i++){
+                v[i] = new std::array<VF,4>[m];
             }
+        }
+        VF &add(int x,int y,int dx,int dy,VF dv){
+            return get(x,y,dx,dy) += dv;
+        }
+        VF &get(int x,int y,int dx,int dy){
+            size_t i = std::ranges::find(deltas, std::pair(dx,dy)) - deltas.begin();
+            assert(i<deltas.size());
+            return v[x][y][i];
+        }
+    };
 
-            VF &get(int x, int y, int dx, int dy) {
-                size_t i = std::ranges::find(deltas, std::pair(dx, dy)) - deltas.begin();
-                assert(i < deltas.size());
-                return v[x][y][i];
+    size_t N,M;
+    P rho[256];
+    P** p;
+    P** old_p;
+    int** dirs;
+    int** last_use;
+    int UT=0;
+    VectorField<V> velocity;
+    VectorField<FLOW_TYPE> velocity_flow;
+    char **field;
+
+    Procesing(size_t n, size_t m): ProcesingParent(), velocity(n,m), velocity_flow(n,m), N(n), M(m)
+    {
+        p       = new P*[n];
+        old_p   = new P*[n];
+        dirs    = new int*[n];
+        last_use= new int*[n];
+        field   = new char*[n];
+        for(int i=0;i<n;i++){
+            p[i] = new P[m];
+            old_p[i] = new P[m];
+            dirs[i] = new int[m];
+            last_use[i] = new int[m]{};
+            field[i] = new char[m+1];
+            for(int i1 = 0; i1 < m; i1++) {
+                dirs[i][i1] = 0;
             }
-        };
+        }
+    }
 
-        VectorField<V> velocity{};
-        VectorField <FLOW_TYPE>velocity_flow{};
-
-        int last_use[N][M]{};
-        int UT = 0; 
-        
-
-        std::tuple<P, bool, std::pair<int, int>> propagate_flow(int x, int y, P lim) {
+    std::tuple<P, bool, std::pair<int, int>> propagate_flow(int x, int y, P lim) {
             last_use[x][y] = UT - 1;
             P ret = 0;
             for (auto [dx, dy] : deltas) {
@@ -144,7 +115,7 @@ class Procesing {
 
         P move_prob(int x, int y) {
             P sum = 0;
-            for (size_t i = 0; i < deltas.size(); ++i) {
+            for (size_t i = 0; i < 4; ++i) {
                 auto [dx, dy] = deltas[i];
                 int nx = x + dx, ny = y + dy;
                 if (field[nx][ny] == '#' || last_use[nx][ny] == UT) {
@@ -162,7 +133,7 @@ class Procesing {
         struct ParticleParams {  
             char type;
             P cur_p;
-            std::array<V, deltas.size()> v;
+            std::array<V, 4> v;
 
             void swap_with(Procesing &proc, int x, int y) {
                 std::swap(proc.field[x][y], type);
@@ -176,9 +147,9 @@ class Procesing {
             bool ret = false;
             int nx = -1, ny = -1;
             do {
-                std::array<P, deltas.size()> tres;
+                std::array<P, 4> tres;
                 P sum = 0;
-                for (size_t i = 0; i < deltas.size(); ++i) {
+                for (size_t i = 0; i < 4; ++i) {
                     auto [dx, dy] = deltas[i];
                     int nx = x + dx, ny = y + dy;
                     if (field[nx][ny] == '#' || last_use[nx][ny] == UT) {
@@ -199,7 +170,7 @@ class Procesing {
                 }
 
                 P p = RandomGenerator::random01<P>() * sum;
-                size_t d = std::ranges::upper_bound(tres, p) - tres.begin();
+                size_t d = tres.at(0) > p ? 0 : tres.at(1) > p ? 1 : tres.at(2) > p ? 2 :tres.at(3) > p ? 3 : 4; // Changed ranges to if
 
                 auto [dx, dy] = deltas[d];
                 nx = x + dx;
@@ -209,7 +180,7 @@ class Procesing {
                 ret = (last_use[nx][ny] == UT - 1 || propagate_move(nx, ny, false));
             } while (!ret);
             last_use[x][y] = UT;
-            for (size_t i = 0; i < deltas.size(); ++i) {
+            for (size_t i = 0; i < 4; ++i) {
                 auto [dx, dy] = deltas[i];
                 int nx = x + dx, ny = y + dy;
                 if (field[nx][ny] != '#' && last_use[nx][ny] < UT - 1 && velocity.get(x, y, dx, dy) < 0) {
@@ -227,7 +198,16 @@ class Procesing {
             return ret;
         }
     
-        void start() {
+        void start(char** _field) override {
+            for (size_t x = 0; x < N; ++x)
+            {   
+                for (size_t y = 0; y < M; ++y)
+                {
+                    field[x][y] = _field[x][y];
+                }
+                field[x][M] = '\0';
+            }
+
             rho[' '] = 0.01;
             rho['.'] = 1000;
             P g = 0.1;
@@ -281,7 +261,7 @@ class Procesing {
                 }
 
                 // Make flow from velocities
-                velocity_flow = {};
+                velocity_flow = VectorField<FLOW_TYPE>(N, M);
                 bool prop = false;
                 do {
                     UT += 2;
@@ -334,7 +314,7 @@ class Procesing {
                                 propagate_move(x, y, true);
                             } else {
                                 propagate_stop(x, y, true);
-                               // std::cout << RandomGenerator::random01<P>() << " " << move_prob(x, y) << "\n";
+                               //std::cout << RandomGenerator::random01<P>() << " " << move_prob(x, y) << "\n";
                             }
                         }
                     }
@@ -349,9 +329,3 @@ class Procesing {
             }
         }
 };
-
-
-int main() {
-    Procesing<Fixed<62, 24, true>, double, Fixed<62, 24>, 36, 84> p;
-    p.start();
-}
